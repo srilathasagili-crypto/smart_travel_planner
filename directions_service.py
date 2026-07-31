@@ -1,11 +1,3 @@
-"""
-services/directions_service.py
-
-Uses the Google Distance Matrix API to compute pairwise travel distances/times
-between a list of places, then applies a nearest-neighbor route optimization
-(a lightweight TSP heuristic — good enough for a handful of daily stops).
-"""
-
 import googlemaps
 from config import Config
 
@@ -15,10 +7,7 @@ class DirectionsService:
         self.client = googlemaps.Client(key=api_key or Config.GOOGLE_MAPS_API_KEY)
 
     def distance_matrix(self, origins: list[dict], destinations: list[dict]) -> list[list[dict]]:
-        """
-        origins/destinations: list of {"lat":.., "lng":..}
-        Returns a 2D matrix [i][j] = {"distance_m":.., "duration_s":..}
-        """
+      
         origin_coords = [f"{p['lat']},{p['lng']}" for p in origins]
         dest_coords = [f"{p['lat']},{p['lng']}" for p in destinations]
 
@@ -44,13 +33,7 @@ class DirectionsService:
         return matrix
 
     def optimize_route(self, start: dict, stops: list[dict]) -> list[dict]:
-        """
-        Nearest-neighbor heuristic: starting from `start` (e.g. the hotel),
-        repeatedly visit the nearest unvisited stop. Returns `stops` reordered.
-
-        This keeps API usage light (one distance-matrix call) while still
-        meaningfully shortening the total route compared to an arbitrary order.
-        """
+      
         if not stops:
             return []
 
