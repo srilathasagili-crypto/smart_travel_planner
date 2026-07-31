@@ -6,7 +6,4 @@ python-dotenv==1.0.1
 spacy==3.7.5
 anthropic==0.34.2
 
-# Streamlit Cloud only runs `pip install -r requirements.txt` - there's no separate
-# build-command step, so the spaCy English model is installed as a direct wheel
-# instead of via `python -m spacy download en_core_web_sm`.
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
