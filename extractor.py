@@ -1,16 +1,3 @@
-"""
-nlp/extractor.py
-
-Extracts structured travel intent from a free-text user query:
-    - destination (GPE / location)
-    - number of days
-    - preferences (tourist places, restaurants, hotels, budget, adventure, etc.)
-    - budget level (budget / mid-range / luxury)
-
-Uses spaCy for Named Entity Recognition (destination) when available, with a
-regex-based fallback so the app still works if the spaCy model isn't installed.
-"""
-
 import re
 
 try:
@@ -125,18 +112,7 @@ def extract_budget(text: str) -> str:
 
 
 def parse_travel_query(text: str) -> dict:
-    """
-    Main entry point. Parses a natural-language travel request into structured data.
-
-    Returns:
-        {
-            "intent": "plan_trip" | "unknown",
-            "destination": str | None,
-            "days": int,
-            "preferences": [str, ...],
-            "budget": str
-        }
-    """
+   
     return {
         "intent": detect_intent(text),
         "destination": extract_destination(text),
