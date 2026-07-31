@@ -1,25 +1,3 @@
-"""
-app.py
-
-Smart Travel Planner - Streamlit application (single-file version).
-
-Everything (config, NLP extraction, Google Maps services, itinerary
-generation, and the UI) lives in this one file on purpose: uploading
-individual files through GitHub's web UI silently flattens folder
-structure, which breaks package imports like `from nlp.extractor import
-...`. Keeping everything in one file means there's no folder structure
-to lose, so this works no matter how it's uploaded to GitHub.
-
-Run locally:
-    streamlit run app.py
-
-Deploy on Streamlit Cloud:
-    Main file path -> app.py
-    App settings -> Secrets:
-        GOOGLE_MAPS_API_KEY = "your_key"
-        ANTHROPIC_API_KEY = ""   # optional
-"""
-
 import os
 import re
 
