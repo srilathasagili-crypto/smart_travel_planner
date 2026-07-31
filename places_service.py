@@ -1,13 +1,3 @@
-"""
-services/places_service.py
-
-Wraps Google Places API (via the googlemaps client) to fetch:
-    - tourist attractions
-    - restaurants
-    - hotels
-for a given destination, respecting simple budget hints.
-"""
-
 import googlemaps
 from config import Config
 
