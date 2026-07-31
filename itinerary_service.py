@@ -1,15 +1,3 @@
-"""
-services/itinerary_service.py
-
-Turns an optimized route (places, restaurants, hotels) into a day-wise itinerary.
-
-If ANTHROPIC_API_KEY is configured, uses Claude to write a natural-language
-itinerary. Otherwise falls back to a deterministic rule-based generator that
-distributes places evenly across the requested number of days
-(morning / afternoon / evening slots). The fallback guarantees the app works
-end-to-end with zero paid LLM calls.
-"""
-
 import json
 from config import Config
 
