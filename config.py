@@ -1,11 +1,3 @@
-"""
-config.py
-Centralized configuration. Reads from Streamlit secrets when running on
-Streamlit Cloud (st.secrets), and falls back to environment variables / a
-local .env file otherwise. This lets the same code run both on Streamlit
-Cloud and on a plain machine.
-"""
-
 import os
 from dotenv import load_dotenv
 
@@ -20,7 +12,7 @@ except ImportError:
 
 
 def _get_secret(key: str, default: str = "") -> str:
-    """Check st.secrets first (Streamlit Cloud), then environment variables (local/.env)."""
+    
     if _HAS_STREAMLIT_SECRETS:
         try:
             if key in st.secrets:
@@ -46,7 +38,7 @@ class Config:
 
 
 def validate_config():
-    """Raise a clear error early if required keys are missing."""
+
     missing = []
     if not Config.GOOGLE_MAPS_API_KEY:
         missing.append("GOOGLE_MAPS_API_KEY")
