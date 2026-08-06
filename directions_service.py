@@ -1,93 +1,106 @@
-import googlemaps
-from config import Config
+import requests
+from math import radians, sin, cos, sqrt, atan2
 
 
 class DirectionsService:
-    def __init__(self, api_key: str = None):
-        self.client = googlemaps.Client(key=api_key or Config.GOOGLE_MAPS_API_KEY)
 
-    def distance_matrix(self, origins: list[dict], destinations: list[dict]) -> list[list[dict]]:
-      
-        origin_coords = [f"{p['lat']},{p['lng']}" for p in origins]
-        dest_coords = [f"{p['lat']},{p['lng']}" for p in destinations]
+    def __init__(self):
+        pass
 
-        try:
-            response = self.client.distance_matrix(
-                origins=origin_coords, destinations=dest_coords, mode="driving"
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Distance matrix request failed: {exc}") from exc
+    def calculate_distance(self, point1, point2):
+        """
+        Calculate straight-line distance using Haversine formula
+        """
+
+        lat1, lon1 = point1["lat"], point1["lng"]
+        lat2, lon2 = point2["lat"], point2["lng"]
+
+        R = 6371  # Earth radius in km
+
+        dlat = radians(lat2 - lat1)
+        dlon = radians(lon2 - lon1)
+
+        a = (
+            sin(dlat / 2) ** 2
+            + cos(radians(lat1))
+            * cos(radians(lat2))
+            * sin(dlon / 2) ** 2
+        )
+
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+        return round(R * c, 2)
+
+
+    def distance_matrix(self, origins, destinations):
 
         matrix = []
-        for row in response.get("rows", []):
-            matrix_row = []
-            for element in row.get("elements", []):
-                if element.get("status") == "OK":
-                    matrix_row.append({
-                        "distance_m": element["distance"]["value"],
-                        "duration_s": element["duration"]["value"],
-                    })
-                else:
-                    matrix_row.append({"distance_m": None, "duration_s": None})
-            matrix.append(matrix_row)
+
+        for origin in origins:
+
+            row = []
+
+            for destination in destinations:
+
+                distance = self.calculate_distance(
+                    origin,
+                    destination
+                )
+
+                row.append({
+                    "distance_m": distance * 1000,
+                    "duration_s": (distance / 40) * 3600
+                })
+
+            matrix.append(row)
+
         return matrix
 
-    def optimize_route(self, start: dict, stops: list[dict]) -> list[dict]:
-      
+
+    def optimize_route(self, start, stops):
+
         if not stops:
             return []
 
         remaining = stops.copy()
         ordered = []
+
         current = start
 
-        # Compute the full matrix once: current+remaining as origins/destinations
-        all_points = [start] + stops
-        matrix = self.distance_matrix(all_points, all_points)
-
-        current_idx = 0  # index of `start` within all_points
-        visited_idx = set()
-
         while remaining:
-            best_idx = None
-            best_distance = None
-            for i, point in enumerate(all_points):
-                if i == 0 or i in visited_idx or point not in remaining:
-                    continue
-                dist = matrix[current_idx][i]["distance_m"]
-                if dist is None:
-                    continue
-                if best_distance is None or dist < best_distance:
-                    best_distance = dist
-                    best_idx = i
 
-            if best_idx is None:
-                # Fallback: no distance data, just append remaining in original order
-                ordered.extend(remaining)
-                break
+            nearest = min(
+                remaining,
+                key=lambda x: self.calculate_distance(
+                    current,
+                    x
+                )
+            )
 
-            next_point = all_points[best_idx]
-            ordered.append(next_point)
-            remaining.remove(next_point)
-            visited_idx.add(best_idx)
-            current_idx = best_idx
+            ordered.append(nearest)
+            remaining.remove(nearest)
+            current = nearest
 
         return ordered
 
-    def total_route_stats(self, start: dict, ordered_stops: list[dict]) -> dict:
-        """Sum distance/duration across the ordered route, start -> stop1 -> stop2 -> ..."""
-        route = [start] + ordered_stops
-        total_distance_m = 0
-        total_duration_s = 0
 
-        for i in range(len(route) - 1):
-            leg = self.distance_matrix([route[i]], [route[i + 1]])
-            element = leg[0][0]
-            if element["distance_m"] is not None:
-                total_distance_m += element["distance_m"]
-                total_duration_s += element["duration_s"]
+    def total_route_stats(self, start, ordered_stops):
+
+        route = [start] + ordered_stops
+
+        total_distance = 0
+
+        for i in range(len(route)-1):
+
+            total_distance += self.calculate_distance(
+                route[i],
+                route[i+1]
+            )
+
 
         return {
-            "total_distance_km": round(total_distance_m / 1000, 1),
-            "total_duration_min": round(total_duration_s / 60),
+            "total_distance_km": round(total_distance,1),
+            "total_duration_min": round(
+                (total_distance / 40) * 60
+            )
         }
