@@ -1,73 +1,159 @@
-import googlemaps
-from config import Config
+import requests
+from geopy.geocoders import Nominatim
 
-_QUERY_TEMPLATES = {
-    "tourist_places": "top tourist attractions in {destination}",
-    "restaurants": "best restaurants in {destination}",
-    "hotels": "{budget} hotels in {destination}",
-    "adventure": "adventure activities in {destination}",
-    "shopping": "shopping markets in {destination}",
-    "nightlife": "nightlife spots in {destination}",
+
+_QUERY_TAGS = {
+    "tourist_places": ["tourism", "attraction"],
+    "restaurants": ["amenity", "restaurant"],
+    "hotels": ["tourism", "hotel"],
+    "adventure": ["sport", "park"],
+    "shopping": ["shop", "mall"],
+    "nightlife": ["amenity", "bar"],
 }
 
 
 class PlacesService:
-    def __init__(self, api_key: str = None):
-        self.client = googlemaps.Client(key=api_key or Config.GOOGLE_MAPS_API_KEY)
 
-    def geocode_destination(self, destination: str) -> dict | None:
-        """Resolve a destination name to lat/lng, used to anchor searches and the map."""
+    def __init__(self):
+        self.geolocator = Nominatim(
+            user_agent="smart_travel_planner"
+        )
+
+
+    def geocode_destination(self, destination: str):
+
         try:
-            results = self.client.geocode(destination)
-        except Exception as exc:
-            raise RuntimeError(f"Geocoding failed for '{destination}': {exc}") from exc
+            location = self.geolocator.geocode(destination)
 
-        if not results:
+        except Exception as exc:
+            raise RuntimeError(
+                f"Geocoding failed: {exc}"
+            )
+
+        if not location:
             return None
 
-        location = results[0]["geometry"]["location"]
         return {
-            "formatted_address": results[0]["formatted_address"],
-            "lat": location["lat"],
-            "lng": location["lng"],
+            "formatted_address": location.address,
+            "lat": location.latitude,
+            "lng": location.longitude
         }
 
+
     def search_category(
-        self, category: str, destination: str, budget: str = "mid-range", limit: int = None
-    ) -> list[dict]:
-        """
-        Run a Google Places text search for one preference category
-        (tourist_places / restaurants / hotels / adventure / shopping / nightlife).
-        """
-        limit = limit or Config.MAX_PLACES_PER_CATEGORY
-        query_template = _QUERY_TEMPLATES.get(category)
-        if not query_template:
+        self,
+        category: str,
+        destination: str,
+        budget: str = "mid-range",
+        limit: int = 5
+    ):
+
+        location = self.geocode_destination(destination)
+
+        if not location:
             return []
 
-        query = query_template.format(destination=destination, budget=budget)
 
-        try:
-            response = self.client.places(query=query)
-        except Exception as exc:
-            raise RuntimeError(f"Places search failed for '{query}': {exc}") from exc
+        lat = location["lat"]
+        lng = location["lng"]
+
+
+        tag_type, tag_value = _QUERY_TAGS.get(
+            category,
+            ["amenity", "restaurant"]
+        )
+
+
+        query = f"""
+        [out:json];
+        (
+          node["{tag_type}"="{tag_value}"]
+          (around:5000,{lat},{lng});
+
+          way["{tag_type}"="{tag_value}"]
+          (around:5000,{lat},{lng});
+        );
+        out center {limit};
+        """
+
+
+        url = "https://overpass-api.de/api/interpreter"
+
+
+        response = requests.post(
+            url,
+            data=query,
+            headers={
+                "User-Agent": "smart-travel-planner"
+            }
+        )
+
+
+        data = response.json()
+
 
         places = []
-        for result in response.get("results", [])[:limit]:
+
+
+        for item in data.get("elements", [])[:limit]:
+
+            tags = item.get("tags", {})
+
+
+            latitude = (
+                item.get("lat")
+                or item.get("center", {}).get("lat")
+            )
+
+            longitude = (
+                item.get("lon")
+                or item.get("center", {}).get("lon")
+            )
+
+
             places.append({
-                "name": result.get("name"),
-                "address": result.get("formatted_address"),
-                "rating": result.get("rating"),
-                "user_ratings_total": result.get("user_ratings_total"),
-                "place_id": result.get("place_id"),
-                "lat": result["geometry"]["location"]["lat"],
-                "lng": result["geometry"]["location"]["lng"],
-                "category": category,
+
+                "name": tags.get(
+                    "name",
+                    "Unknown place"
+                ),
+
+                "address": tags.get(
+                    "addr:street",
+                    destination
+                ),
+
+                "rating": None,
+
+                "user_ratings_total": None,
+
+                "lat": latitude,
+
+                "lng": longitude,
+
+                "category": category
             })
+
+
         return places
 
-    def gather_all(self, destination: str, preferences: list[str], budget: str) -> dict:
-        """Fetch places for every requested preference category."""
+
+
+    def gather_all(
+        self,
+        destination: str,
+        preferences: list[str],
+        budget: str
+    ):
+
         results = {}
+
         for category in preferences:
-            results[category] = self.search_category(category, destination, budget)
+
+            results[category] = self.search_category(
+                category,
+                destination,
+                budget
+            )
+
         return results
