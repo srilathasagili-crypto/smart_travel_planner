@@ -5,13 +5,10 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 from dotenv import load_dotenv
+from services.places import PlacesService
+from services.directions import DirectionsService
 
 load_dotenv()
-
-try:
-    import googlemaps
-except ImportError:
-    googlemaps = None
 
 try:
     import spacy
@@ -43,17 +40,14 @@ def _get_secret(key: str, default: str = "") -> str:
 
 
 class Config:
-    GOOGLE_MAPS_API_KEY = _get_secret("GOOGLE_MAPS_API_KEY", "")
     ANTHROPIC_API_KEY = _get_secret("ANTHROPIC_API_KEY", "")
-    MAX_PLACES_PER_CATEGORY = int(_get_secret("MAX_PLACES_PER_CATEGORY", 8))
+    MAX_PLACES_PER_CATEGORY = int(
+        _get_secret("MAX_PLACES_PER_CATEGORY", 8)
+    )
 
 
 def validate_config():
-    if not Config.GOOGLE_MAPS_API_KEY:
-        raise EnvironmentError(
-            "Missing GOOGLE_MAPS_API_KEY. Locally: add it to .env or "
-            ".streamlit/secrets.toml. On Streamlit Cloud: App settings -> Secrets."
-        )
+    return True
 
 
 # ============================================================================
@@ -131,131 +125,6 @@ def parse_travel_query(text: str) -> dict:
         "preferences": extract_preferences(text),
         "budget": extract_budget(text),
     }
-
-
-# ============================================================================
-# GOOGLE PLACES SERVICE
-# ============================================================================
-
-_QUERY_TEMPLATES = {
-    "tourist_places": "top tourist attractions in {destination}",
-    "restaurants": "best restaurants in {destination}",
-    "hotels": "{budget} hotels in {destination}",
-    "adventure": "adventure activities in {destination}",
-    "shopping": "shopping markets in {destination}",
-    "nightlife": "nightlife spots in {destination}",
-}
-
-
-class PlacesService:
-    def __init__(self, api_key: str = None):
-        self.client = googlemaps.Client(key=api_key or Config.GOOGLE_MAPS_API_KEY)
-
-    def geocode_destination(self, destination: str):
-        try:
-            results = self.client.geocode(destination)
-        except Exception as exc:
-            raise RuntimeError(f"Geocoding failed for '{destination}': {exc}") from exc
-        if not results:
-            return None
-        location = results[0]["geometry"]["location"]
-        return {"formatted_address": results[0]["formatted_address"], "lat": location["lat"], "lng": location["lng"]}
-
-    def search_category(self, category: str, destination: str, budget: str = "mid-range", limit: int = None):
-        limit = limit or Config.MAX_PLACES_PER_CATEGORY
-        template = _QUERY_TEMPLATES.get(category)
-        if not template:
-            return []
-        query = template.format(destination=destination, budget=budget)
-        try:
-            response = self.client.places(query=query)
-        except Exception as exc:
-            raise RuntimeError(f"Places search failed for '{query}': {exc}") from exc
-
-        places = []
-        for result in response.get("results", [])[:limit]:
-            places.append({
-                "name": result.get("name"),
-                "address": result.get("formatted_address"),
-                "rating": result.get("rating"),
-                "place_id": result.get("place_id"),
-                "lat": result["geometry"]["location"]["lat"],
-                "lng": result["geometry"]["location"]["lng"],
-                "category": category,
-            })
-        return places
-
-    def gather_all(self, destination: str, preferences: list, budget: str) -> dict:
-        return {cat: self.search_category(cat, destination, budget) for cat in preferences}
-
-
-# ============================================================================
-# GOOGLE DIRECTIONS SERVICE + ROUTE OPTIMIZATION
-# ============================================================================
-
-class DirectionsService:
-    def __init__(self, api_key: str = None):
-        self.client = googlemaps.Client(key=api_key or Config.GOOGLE_MAPS_API_KEY)
-
-    def distance_matrix(self, origins: list, destinations: list):
-        origin_coords = [f"{p['lat']},{p['lng']}" for p in origins]
-        dest_coords = [f"{p['lat']},{p['lng']}" for p in destinations]
-        try:
-            response = self.client.distance_matrix(origins=origin_coords, destinations=dest_coords, mode="driving")
-        except Exception as exc:
-            raise RuntimeError(f"Distance matrix request failed: {exc}") from exc
-
-        matrix = []
-        for row in response.get("rows", []):
-            matrix_row = []
-            for element in row.get("elements", []):
-                if element.get("status") == "OK":
-                    matrix_row.append({"distance_m": element["distance"]["value"], "duration_s": element["duration"]["value"]})
-                else:
-                    matrix_row.append({"distance_m": None, "duration_s": None})
-            matrix.append(matrix_row)
-        return matrix
-
-    def optimize_route(self, start: dict, stops: list) -> list:
-        if not stops:
-            return []
-        remaining = stops.copy()
-        ordered = []
-        all_points = [start] + stops
-        matrix = self.distance_matrix(all_points, all_points)
-        current_idx = 0
-        visited_idx = set()
-
-        while remaining:
-            best_idx, best_distance = None, None
-            for i, point in enumerate(all_points):
-                if i == 0 or i in visited_idx or point not in remaining:
-                    continue
-                dist = matrix[current_idx][i]["distance_m"]
-                if dist is None:
-                    continue
-                if best_distance is None or dist < best_distance:
-                    best_distance, best_idx = dist, i
-            if best_idx is None:
-                ordered.extend(remaining)
-                break
-            next_point = all_points[best_idx]
-            ordered.append(next_point)
-            remaining.remove(next_point)
-            visited_idx.add(best_idx)
-            current_idx = best_idx
-        return ordered
-
-    def total_route_stats(self, start: dict, ordered_stops: list) -> dict:
-        route = [start] + ordered_stops
-        total_distance_m, total_duration_s = 0, 0
-        for i in range(len(route) - 1):
-            leg = self.distance_matrix([route[i]], [route[i + 1]])
-            element = leg[0][0]
-            if element["distance_m"] is not None:
-                total_distance_m += element["distance_m"]
-                total_duration_s += element["duration_s"]
-        return {"total_distance_km": round(total_distance_m / 1000, 1), "total_duration_min": round(total_duration_s / 60)}
 
 
 # ============================================================================
@@ -408,7 +277,7 @@ def render_itinerary(itinerary: list):
 
 def main():
     st.title("🧭 Smart Travel Planner")
-    st.caption("Describe your trip in plain English — NLP + Google Maps handle the rest.")
+    st.caption("Describe your trip in plain English — NLP + OpenStreetMap handle the rest.")
 
     try:
         validate_config()
@@ -433,7 +302,7 @@ def main():
             except ValueError as e:
                 st.error(str(e)); st.stop()
             except RuntimeError as e:
-                st.error(f"Google Maps API error: {e}"); st.stop()
+                st.error(f"Map service error: {e}")
             except Exception as e:
                 st.error(f"Something went wrong: {e}"); st.stop()
         st.session_state["result"] = result
