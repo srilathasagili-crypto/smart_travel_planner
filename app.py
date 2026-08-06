@@ -5,7 +5,9 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 from dotenv import load_dotenv
-from services.places_service import PlacesService
+
+from places_service import PlacesService
+from directions_service import DirectionsService
 
 load_dotenv()
 
